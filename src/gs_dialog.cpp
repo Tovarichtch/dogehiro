@@ -86,8 +86,18 @@ bool gs_dialog_open(const char *title, const char *, std::string &out)
 bool gs_dialog_save(const char *title, const char *suggested, std::string &out)
 {
 #ifdef __APPLE__
+    /* The suggestion is often the full path of the card already open, but
+     * "default name" takes a name only: given a path, it becomes the file's name.
+     * The folder goes to "default location" instead. */
+    std::string name = suggested ? suggested : "card.bin", where;
+    const size_t slash = name.rfind('/');
+    if (slash != std::string::npos) {
+        where = " default location (POSIX file \"" + (slash ? name.substr(0, slash) : "/") + "\")";
+        name = name.substr(slash + 1);
+    }
+    if (name.empty()) name = "card.bin";
     return run(std::string("osascript -e 'POSIX path of (choose file name with prompt \"") + title +
-               "\" default name \"" + (suggested ? suggested : "card.bin") + "\")' 2>/dev/null", out);
+               "\" default name \"" + name + "\"" + where + ")' 2>/dev/null", out);
 #else
     if (have("zenity"))
         return run(std::string("zenity --file-selection --save --confirm-overwrite --title=\"") + title +
