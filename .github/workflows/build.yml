@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  name: linux }
+          - { os: windows-latest, name: windows }
+          - { os: macos-latest,   name: macos }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Web engine headers (Linux)
+        if: matrix.name == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      # macOS is the one we cannot build ourselves - no Mac here - so this job
+      # keeps its bundle for us to pick up. Two days is enough to fetch it and
+      # costs almost nothing in storage.
+      - name: Keep the macOS bundle
+        if: matrix.name == 'macos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dogehiro-macos
+          path: build/dogehiro.app
+          retention-days: 2

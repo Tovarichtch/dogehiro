@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dogehiro</title>
+<style>
+  /* Drawn in CSS so every edge stays crisp at any size; only the game's own artwork
+     (item cards, portraits, badges, pictos) is bitmap, shown at its native pixels. */
+  :root{
+    --bg:#121815; --ink:#eef6f0; --dim:#9fb4a8;
+    --panel-a:#4f9370; --panel-b:#255640; --panel-c:#183a2c; --edge:#a9c4b6;
+    --box:#0b1a13; --box-edge:#2f6a50; --gold:#ffd54a; --gold-dark:#6b3400; --cream:#fff6e0;
+    --steel-a:#f2f2f2; --steel-b:#b7b7b7; --steel-c:#858585; --plate-a:#cfe9f3; --plate-b:#8fc3da;
+    --orange-a:#ffd166; --orange-b:#f28c0c;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}    /* a display rule must never beat the hidden attribute */
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 "Segoe UI",system-ui,-apple-system,sans-serif;
+    overflow-y:auto}   /* the desk can be smaller than the page: let it scroll rather than cut */
+  .wrap{width:920px;max-width:100%;margin:0 auto;padding:10px 14px 12px}
+
+  .lbl{font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:var(--gold);
+       text-shadow:-1px -1px 0 var(--gold-dark),1px -1px 0 var(--gold-dark),-1px 1px 0 var(--gold-dark),
+                   1px 1px 0 var(--gold-dark),0 2px 3px #000c}
+  /* the game's selection plates: a chiselled steel frame around a flat panel */
+  /* the game's card plates: white lettering carved out by a dark outline, a
+     graphite frame with ribbed ends, and pale brushed steel between them */
+  .steel{font:700 12.5px/1 "Trebuchet MS","Segoe UI",system-ui,sans-serif;letter-spacing:.01em;
+       color:#ffffff;-webkit-text-stroke:2px #17322b;paint-order:stroke fill;
+       white-space:nowrap;border:0;padding:8px 30px;cursor:pointer;position:relative;
+       background:repeating-linear-gradient(0deg,#00000008 0 1px,#ffffff10 1px 2px),
+                  linear-gradient(180deg,#e6eff3 0%,#fbfdfe 26%,#dbe7ec 54%,#b9c9d0 78%,#9fb1b9 100%);
+       clip-path:polygon(9px 0,calc(100% - 9px) 0,100% 9px,100% calc(100% - 9px),
+                         calc(100% - 9px) 100%,9px 100%,0 calc(100% - 9px),0 9px);
+       box-shadow:inset 0 0 0 3px #3b4a4f, inset 0 0 0 4px #9db0b7, inset 0 0 0 5px #eef5f7;
+       transition:filter .1s}
+  .steel::before,.steel::after{content:"";position:absolute;top:4px;bottom:4px;width:8px;
+       background:repeating-linear-gradient(180deg,#54646a 0 2px,#dfe9ec 2px 4px);
+       box-shadow:inset 0 0 0 1px #3b4a4f}
+  .steel::before{left:4px} .steel::after{right:4px}
+  .steel:hover:not(:disabled){filter:brightness(1.05)}
+  .steel:active:not(:disabled){background:repeating-linear-gradient(0deg,#00000008 0 1px,#ffffff10 1px 2px),
+       linear-gradient(180deg,#9fb1b9 0%,#b9c9d0 26%,#dbe7ec 54%,#fbfdfe 78%,#e6eff3 100%)}
+  .steel.gold{-webkit-text-stroke:2px #3a2401;
+       background:repeating-linear-gradient(0deg,#00000008 0 1px,#ffffff10 1px 2px),
+                  linear-gradient(180deg,#f6dd97 0%,#fff6d2 26%,#eecc66 54%,#d2a423 78%,#b98c0e 100%);
+       box-shadow:inset 0 0 0 3px #4d3703, inset 0 0 0 4px #c9a445, inset 0 0 0 5px #fff3cf}
+  .steel.gold::before,.steel.gold::after{background:repeating-linear-gradient(180deg,#6d5208 0 2px,#f5e2a4 2px 4px);
+       box-shadow:inset 0 0 0 1px #4d3703}
+  .steel.on{background:repeating-linear-gradient(0deg,#00000008 0 1px,#ffffff10 1px 2px),
+       linear-gradient(180deg,#f6dd97 0%,#fff6d2 26%,#eecc66 54%,#d2a423 78%,#b98c0e 100%);
+       -webkit-text-stroke:2px #3a2401;
+       box-shadow:inset 0 0 0 3px #4d3703, inset 0 0 0 4px #c9a445, inset 0 0 0 5px #fff3cf}
+  .steel.on::before,.steel.on::after{background:repeating-linear-gradient(180deg,#6d5208 0 2px,#f5e2a4 2px 4px);
+       box-shadow:inset 0 0 0 1px #4d3703}
+  .steel.small{padding:7px 26px;font-size:12px}
+  .steel:disabled{opacity:.45;cursor:not-allowed}
+
+  /* Once the game's own plates have been imported, the buttons stop being a
+     drawing of a plate and become the plate: a nine-slice of the real sprite,
+     frame, bevel, notches and the gradient of its steel. */
+  .hasplate .steel{background:none;box-shadow:none;clip-path:none;
+       border:12px solid transparent;border-image:var(--plate) 18 fill stretch;
+       padding:6px 12px;min-width:104px}
+  .hasplate .steel::before,.hasplate .steel::after{display:none}
+  .hasplate .steel.on{color:#ffe7a6;-webkit-text-stroke:2px #3a2401;   /* the tab you are on */
+       filter:brightness(1.1) saturate(1.25)}
+  .hasplate .steel:active:not(:disabled){background:none;   /* the plate stays put; only the writing answers */
+       color:#ffdf7a;-webkit-text-stroke:2px #3a2401}
+  .hasplate .steel.small{padding:4px 10px;min-width:90px}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid #26332c;margin-bottom:10px}
+  header h1{margin:0;font-size:19px}
+  header h1 small{display:block;margin-top:3px;font-size:12px;letter-spacing:0;text-transform:none;text-shadow:none;color:var(--dim);font-weight:400}
+  header .bar{display:flex;gap:8px;align-items:center}
+  #uiScale{appearance:none;-webkit-appearance:none;font:700 12px system-ui;color:var(--ink);
+    background:#1b241f;border:1px solid #3d5245;border-radius:5px;padding:6px 26px 6px 10px}
+  .bar{position:relative}
+  .bar::after{content:"";position:absolute;right:11px;top:50%;margin-top:-2px;pointer-events:none;
+    border:4px solid transparent;border-top-color:var(--ink)}
+
+  #drop{border:2px dashed #3d5245;border-radius:10px;padding:40px 20px;text-align:center;color:var(--dim)}
+  #drop.over{border-color:var(--gold);color:var(--gold)}
+  #status{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:8px 12px;border-radius:6px;border:1px solid #2c3a33;background:#1b241f;font-size:14.5px;font-weight:600}
+  #status .ic{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font:900 14px/1 system-ui;color:#0b1a13;flex:none}
+  #status.ok{color:#8ff0b4;border-color:#2f8a5a} #status.ok .ic{background:#4fe08a}
+  #status.err{color:#ffb3a7;border-color:#a33b2d} #status.err .ic{background:#ff6b57;color:#2a0a05}
+
+  /* the panel: the first draft's green bevel */
+  .panel{background:linear-gradient(160deg,var(--panel-a),var(--panel-b) 55%,var(--panel-c));
+         border:3px solid var(--edge);border-radius:14px;padding:12px;
+         box-shadow:0 12px 34px #000a, inset 0 1px 0 #ffffff40, inset 0 0 60px #0004}
+
+  .top{display:grid;grid-template-columns:172px 1fr 250px;gap:18px;align-items:start}
+  /* portrait well: dark octagon with a steel rim */
+  .well{position:relative;width:172px;height:214px;padding:5px;background:linear-gradient(180deg,#e6e6e6,#8a8a8a);
+        clip-path:polygon(16px 0,calc(100% - 16px) 0,100% 16px,100% calc(100% - 16px),calc(100% - 16px) 100%,16px 100%,0 calc(100% - 16px),0 16px);
+        filter:drop-shadow(0 6px 10px #0009)}
+  .well .in{width:100%;height:100%;background:linear-gradient(180deg,#5b6b63,#1e2a24 70%,#0c1410);display:grid;place-items:center;overflow:hidden;
+        clip-path:polygon(13px 0,calc(100% - 13px) 0,100% 13px,100% calc(100% - 13px),calc(100% - 13px) 100%,13px 100%,0 calc(100% - 13px),0 13px)}
+  /* height alone: giving both a width and a max-height let the browser squash it */
+  .well img{height:184px;width:auto;image-rendering:auto}
+  .who{margin-top:5px;text-align:center;font-size:12.5px;color:#d9ead f;color:#d9eadf}
+
+  /* stat rows: gold label, dark value box, like the strips but drawn */
+  .rows{display:grid;gap:4px}
+  .row{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:10px}
+  .row .lbl{font-size:16px}
+  .box{position:relative;height:36px;background:var(--box);border:1px solid var(--box-edge);border-radius:4px;
+       clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,0 100%)}
+  .box input,.box .val{position:absolute;inset:0;width:100%;background:none;border:0;outline:0;padding:0 12px;
+       color:var(--cream);text-align:right;font:800 22px/40px "Segoe UI",system-ui,sans-serif;text-shadow:0 1px 2px #000}
+  .box input:focus{background:#ffffff14}
+  /* The little up and down arrows only when the pointer is on the field. Hidden by
+     opacity, not removed, so the number never shifts as they come and go. */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button{opacity:0;transition:opacity .12s}
+  input[type=number]:hover::-webkit-inner-spin-button,
+  input[type=number]:focus::-webkit-inner-spin-button,
+  input[type=number]:hover::-webkit-outer-spin-button,
+  input[type=number]:focus::-webkit-outer-spin-button{opacity:1}
+  .box input[readonly]{color:#cfe3d8}
+  .box .val{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-size:19px;
+    white-space:nowrap;overflow:hidden}
+  .box .val img.badge{height:20px;border:1px solid #fffa}
+  /* EXP gauge: the game's orange bar, text inside */
+  .gauge{position:relative;height:26px;margin-top:-2px;background:#0b1a13;border:1px solid #4fbf7a;border-radius:3px;overflow:hidden}
+  .gauge .fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(180deg,var(--orange-a),var(--orange-b));box-shadow:0 0 8px #ffb02f99}
+  .gauge .txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:900 13px system-ui;letter-spacing:.06em;pointer-events:none}
+  .gauge .txt.light{color:#fff;text-shadow:0 1px 2px #000}
+  .gauge .txt.dark{color:#a4ffa4;text-shadow:-1px -1px 0 #0b2a18,1px -1px 0 #0b2a18,-1px 1px 0 #0b2a18,1px 1px 0 #0b2a18;clip-path:inset(0 100% 0 0)}   /* over the orange fill */
+  .gauge input[type=range]{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize}
+  .note{font-size:12px;color:#cfe3d8;margin:2px 0 0 160px}
+
+  /* right column: name plate + ITEM */
+  .side{display:grid;gap:14px}
+  .plate{position:relative;background:linear-gradient(180deg,var(--plate-a),var(--plate-b));border:2px solid #7fb6cb;border-radius:8px;
+         padding:10px 12px 10px;color:#123;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,0 100%)}
+  .plate .head{display:flex;justify-content:space-between;align-items:center}
+  .plate .head .lbl{font-size:14px}
+  .plate .rank{display:flex;align-items:center;gap:6px;font:900 14px system-ui;color:#2b5a6b;letter-spacing:.06em}
+  .plate .rank img{height:18px;border:1px solid #2b5a6b88}
+  .plate .name input{width:100%;background:#ffffffb0;border:1px solid #7fb6cb;border-radius:4px;margin:6px 0;padding:4px 8px;
+         font:900 24px/1.1 "Segoe UI",system-ui,sans-serif;letter-spacing:.16em;color:#123;text-transform:uppercase;outline:0}
+  .plate .name{position:relative} .plate .name .cnt{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:700 11px system-ui;color:#2b5a6b;letter-spacing:.05em}
+  .plate .name input{padding-right:52px}
+  .plate .games{display:flex;align-items:baseline;justify-content:flex-end;gap:6px;font-weight:900;font-size:13px;color:#123}
+  .plate .games input{width:3em;background:none;border:0;border-bottom:2px solid #2b5a6b;outline:0;color:#123;font:900 22px system-ui;text-align:right}
+  .item{background:#0b1a13cc;border:1px solid var(--box-edge);border-radius:6px;padding:8px 12px}
+  .item .lbl{font-size:14px}
+  .item .line{display:flex;align-items:center;gap:12px;margin-top:6px;font:800 20px system-ui;color:var(--cream)}
+  .item .line img{height:32px;image-rendering:pixelated}
+  .item .line small{font-size:12px;color:var(--dim);font-weight:400}
+
+  .tabs{display:flex;gap:10px;align-items:center;margin:10px 0 8px}
+  .tabs .sp{flex:1} .tabs .tip{font-size:12.5px;color:#d9eadf}
+  .grid{display:grid;gap:8px;justify-content:center}
+  .grid.w{grid-template-columns:repeat(9,88px)} .grid.c{grid-template-columns:repeat(7,88px)}
+  .slot{position:relative;width:88px;height:115px;cursor:pointer;outline:3px solid transparent;transition:outline-color .1s,transform .1s}
+  .slot img{width:100%;height:100%;display:none;object-fit:fill}   /* square: the art has its own outline */
+  .slot.art img{display:block}
+  .slot:not(.art){background:linear-gradient(#13251c,#0b1712);border:1px solid #2f5140}
+  .slot .nm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+    padding:6px;font:800 11.5px/1.3 system-ui;letter-spacing:.03em;color:#e6fff0}
+  .slot.art .nm{display:none}
+  .slot.off .nm{color:#6f9481}
+  #langPick{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 14px;border-radius:8px;
+    background:#13251c;border:1px solid #2f5140;font:700 13px system-ui;color:#cfe8d6}
+  .portname{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;height:100%;gap:6px;
+    padding:10px;font:900 15px/1.35 system-ui;letter-spacing:.04em;color:#e6fff0}
+  #portrait{display:none}
+  .well.art #portrait{display:block}
+  .well.art .portname{display:none}
+  .slot.off:not(.haslock) img{filter:grayscale(1) brightness(.42) contrast(.85)}
+  .slot.off::after{content:"";position:absolute;inset:0;background:#00180f33}
+  .slot:hover{outline-color:var(--gold);transform:translateY(-2px)}
+  .slot.eq::before{content:"EQUIPPED";position:absolute;left:0;right:0;top:-2px;z-index:2;font:900 9px/14px system-ui;letter-spacing:.08em;
+        text-align:center;color:#1a1200;background:var(--gold);border-radius:4px 4px 0 0}
+  /* the items with no locker card: a folded block of plates, three across */
+  .ghosts{margin-top:12px}
+  .glab{display:block;margin:0 auto 6px;padding:2px 8px;background:none;border:0;cursor:pointer;
+        color:#87ad99;font:inherit;font-size:11px;letter-spacing:.05em}
+  .glab:hover{color:var(--gold)}
+  .xlist{display:grid;grid-template-columns:repeat(6,140px);gap:5px;justify-content:center}
+  .slot.x{width:auto;height:26px;display:flex;align-items:center;gap:7px;padding:0 8px}
+  .slot.x img{display:none;width:auto;height:auto;object-fit:contain}
+  .slot.x.plated .xi{display:block;max-height:20px}
+  .slot.x.plated .xn{display:block;max-height:13px}
+  .slot.x.plated .nm{display:none}
+  .slot.x .nm{position:static;inset:auto;display:block;flex:1;text-align:left;font-size:9.5px;letter-spacing:.02em;white-space:nowrap}
+  .slot.x .xd{margin-left:auto;padding-left:6px;font-style:normal;font-size:9px;opacity:.5;letter-spacing:.06em}
+  .slot.x.eq::before{display:none}
+  .slot.x.eq{outline-color:var(--gold)}
+  .count{color:#d9eadf;font-size:13px;margin:0 10px 0 0}
+  .tools{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:8px}
+  .config{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:780px;margin:6px auto 0}
+  .config .steel{padding:16px}
+  .config .steel b{display:block;font-size:18px;margin-top:4px}
+  .cfgnote{text-align:center;font-size:12.5px;color:#d9eadf;margin-top:10px}
+
+  details{margin-top:8px;background:#0b1a13aa;border-radius:6px;padding:6px 12px;font-size:13.5px}
+  summary{cursor:pointer;font-weight:700;color:#d9eadf}
+  details table{width:100%;border-collapse:collapse;margin-top:6px}
+  details td{padding:3px 0;border-bottom:1px solid #ffffff14} details td:last-child{text-align:right;color:var(--dim)}
+  details input{width:7em;background:var(--box);border:1px solid var(--box-edge);border-radius:3px;color:var(--cream);font:inherit;text-align:right;padding:2px 6px}
+  .warn{font-size:13px;color:#ffd97a;margin:8px 0 0}
+  footer{margin-top:16px;font-size:12px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1 class="lbl">Dogehiro<small>Ghost Squad card editor · Sega Chihiro</small></h1>
+  <div class="bar">
+    <button class="steel" id="btnOpen">Open card</button>
+    <button class="steel" id="btnNew">Blank card</button>
+    <button class="steel gold" id="btnSave" disabled>Save card</button>
+    <button class="steel" id="btnArt" title="Show the game's own pictures, read from your own copy of the game">Import assets</button>
+    <select id="uiScale" title="How large the page is drawn"><option value="0.75">75%</option><option value="1" selected>100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select>
+  </div>
+</header>
+
+<div id="langPick" hidden><span id="langAsk">Which edition do you want?</span>
+  <button class="steel" data-lang="world">World</button>
+  <button class="steel" data-lang="jp">Japanese</button>
+  <button class="steel" data-lang="">Cancel</button></div>
+<div id="drop">Press <b>Open card</b> and pick a 2048-byte <b>.bin</b> card.</div>
+<p id="status" hidden></p>
+
+<div class="panel" id="editor" hidden>
+  <div class="top">
+    <div>
+      <div class="well" id="well"><div class="in"><img id="portrait" alt=""><div class="portname" id="portName"></div></div></div>
+      <div class="who" id="who"></div>
+    </div>
+
+    <div class="rows">
+      <div class="row"><span class="lbl">Class</span>
+        <div class="box"><div class="val"><span id="rankName"></span><img class="badge" id="rankBadge" alt=""></div></div></div>
+      <div class="row"><span class="lbl">Level</span>
+        <div class="box"><input type="number" id="fLevel" min="1" max="99"></div></div>
+      <div class="row"><span class="lbl">EXP</span>
+        <div class="box"><div class="val" id="f50"></div></div></div>
+      <div class="row"><span></span>
+        <div class="gauge"><div class="fill" id="expfill"></div><div class="txt light" id="expTxt"></div><div class="txt dark" id="expTxt2"></div>
+          <input type="range" id="expSlide" min="0" max="1" step="1"></div></div>
+      <div class="row"><span class="lbl">Play</span>
+        <div class="box"><input type="number" id="f48" min="0"></div></div>
+      <div class="row"><span class="lbl">Best score</span>
+        <div class="box"><input type="number" id="f44" min="0"></div></div>
+    </div>
+
+    <div class="side">
+      <div class="plate">
+        <div class="head"><span class="lbl">Name</span>
+          <span class="rank"><span id="abbr">PVT</span><img id="badge2" alt=""></span></div>
+        <div class="name"><input type="text" id="fName" maxlength="8" spellcheck="false" placeholder="8 letters max"><span class="cnt" id="nameCnt">0 / 8</span></div>
+        <div class="games"><input type="number" id="fCredits2" min="0" max="999"><span>games left to play.</span></div>
+      </div>
+      <div class="item"><span class="lbl">Item</span>
+        <div class="line"><img id="picGun" alt="">× <span id="nW">0</span><small>weapons unlocked</small></div>
+        <div class="line"><img id="picShirt" alt="">× <span id="nC">0</span><small>costumes unlocked</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="steel on" data-tab="c">Select costume</button>
+    <button class="steel" data-tab="w">Select weapon</button>
+    <button class="steel" data-tab="k">Config</button>
+    <span class="sp"></span>
+    <span class="tip">Left click wears it · right click locks or unlocks</span>
+  </div>
+  <div id="tab-c"><div class="grid c" id="gCostumes"></div>
+    <div class="ghosts"><button type="button" class="glab" data-open="xCostumes">Not in the locker: 3 more the game can still wear &#9656;</button><div class="xlist" id="xCostumes" hidden></div></div>
+    <div class="tools"><span class="count" id="cc"></span><button class="steel small" data-all="c">Unlock all</button><button class="steel small" data-none="c">Lock all</button></div></div>
+  <div id="tab-w" hidden><div class="grid w" id="gWeapons"></div>
+    <div class="ghosts"><button type="button" class="glab" data-open="xWeapons">Not in the locker: 11 more the game can still wear &#9656;</button><div class="xlist" id="xWeapons" hidden></div></div>
+    <div class="tools"><span class="count" id="cw"></span><button class="steel small" data-all="w">Unlock all</button><button class="steel small" data-none="w">Lock all</button></div></div>
+  <div id="tab-k" hidden>
+    <div class="config">
+      <button class="steel" id="tSub">Sub title<b id="subState">ON</b></button>
+      <button class="steel" id="tApp">Change appearance<b id="appState">NORMAL</b></button>
+      <button class="steel" id="tNew">Mark my changes as NEW<b id="newState">YES</b></button>
+    </div>
+    <p class="cfgnote">The game's CONFIG menu has exactly these two settings: subtitles on or off, and the in-game display in NORMAL or SIMPLE mode. Changing one here also makes the CONFIG button available on that card.
+      The third button decides what the game shows the next time the card goes in: with YES, the costumes and
+      weapons you just changed are announced with a NEW flag on the PLAYER'S DATA screen, exactly as if you had
+      won them in a game; with NO, the card looks like nothing changed.</p>
+  </div>
+
+  <details><summary>Other data stored on the card</summary><table id="raw"></table></details>
+</div>
+
+
+</div>
+
+<script>
+// Ghost Squad card tables: item bits and names, where each picture sits in the game's
+// sprite archive, EXP milestones, class thresholds. Facts about the format, not artwork.
+// Copyright (c) 2026 Reda Cherif-Touil
+// SPDX-License-Identifier: GPL-3.0-or-later
+window.GSCARD_ITEMS = {"costumes": [{"bit": 0, "name": "GHOST SQUAD", "tex": 0, "tex_en": 0, "tex_locked": 1}, {"bit": 4, "name": "JUNGLE", "tex": 2, "tex_en": 2, "tex_locked": 3}, {"bit": 3, "name": "DESERT", "tex": 4, "tex_en": 4, "tex_locked": 5}, {"bit": 5, "name": "TOUGH GUY", "tex": 8, "tex_en": 8, "tex_locked": 9}, {"bit": 6, "name": "POLICE MAN", "tex": 6, "tex_en": 6, "tex_locked": 7}, {"bit": 7, "name": "WW2", "tex": 12, "tex_en": 12, "tex_locked": 13}, {"bit": 8, "name": "URBAN", "tex": 16, "tex_en": 16, "tex_locked": 17}, {"bit": 9, "name": "COWBOY", "tex": 14, "tex_en": 14, "tex_locked": 15}, {"bit": 10, "name": "VIRTUA COP", "tex": 18, "tex_en": 18, "tex_locked": 19}, {"bit": 11, "name": "SKY", "tex": 10, "tex_en": 10, "tex_locked": 11}, {"bit": 12, "name": "NINJA", "tex": 22, "tex_en": 22, "tex_locked": 23}, {"bit": 13, "name": "PANDA", "tex": 24, "tex_en": 24, "tex_locked": 25}, {"bit": 14, "name": "FUTURE WARRIOR", "tex": 20, "tex_en": 20, "tex_locked": 21}, {"bit": 15, "name": "GOLD", "tex": 26, "tex_en": 26, "tex_locked": 27}], "weapons": [{"bit": 1, "name": "XM-2119", "tex": 56, "tex_en": 56, "tex_locked": 57}, {"bit": 2, "name": "M94R", "tex": 58, "tex_en": 58, "tex_locked": 59}, {"bit": 3, "name": "MP10", "tex": 60, "tex_en": 60, "tex_locked": 61}, {"bit": 6, "name": "AR4A", "tex": 62, "tex_en": 62, "tex_locked": 63}, {"bit": 4, "name": "TK1B", "tex": 64, "tex_en": 65, "tex_locked": 66}, {"bit": 7, "name": "TR14", "tex": 67, "tex_en": 68, "tex_locked": 69}, {"bit": 8, "name": "G50", "tex": 70, "tex_en": 70, "tex_locked": 71}, {"bit": 5, "name": "CPG7", "tex": 72, "tex_en": 73, "tex_locked": 74}, {"bit": 9, "name": "SAW24", "tex": 75, "tex_en": 76, "tex_locked": 77}, {"bit": 10, "name": "XMW21", "tex": 78, "tex_en": 79, "tex_locked": 80}, {"bit": 11, "name": "M209", "tex": 81, "tex_en": 81, "tex_locked": 82}, {"bit": 12, "name": "TM9V", "tex": 83, "tex_en": 84, "tex_locked": 85}, {"bit": 13, "name": "PM6", "tex": 86, "tex_en": 87, "tex_locked": 88}, {"bit": 14, "name": "P4512", "tex": 89, "tex_en": 89, "tex_locked": 90}, {"bit": 15, "name": "P44M", "tex": 91, "tex_en": 92, "tex_locked": 93}, {"bit": 16, "name": "M45R", "tex": 94, "tex_en": 94, "tex_locked": 95}, {"bit": 17, "name": "GUARDIAN II", "tex": 96, "tex_en": 96, "tex_locked": 97}, {"bit": 18, "name": "GUARDIAN I", "tex": 98, "tex_en": 99, "tex_locked": 100}, {"bit": 23, "name": "M4E", "tex": 101, "tex_en": 101, "tex_locked": 102}, {"bit": 24, "name": "SG112", "tex": 103, "tex_en": 103, "tex_locked": 104}, {"bit": 25, "name": "ABG1", "tex": 105, "tex_en": 106, "tex_locked": 107}, {"bit": 19, "name": "CAC82", "tex": 108, "tex_en": 109, "tex_locked": 110}, {"bit": 20, "name": "SPR3", "tex": 111, "tex_en": 112, "tex_locked": 113}, {"bit": 21, "name": "SR308", "tex": 114, "tex_en": 115, "tex_locked": 116}, {"bit": 22, "name": "SPR11", "tex": 117, "tex_en": 118, "tex_locked": 119}]};
+window.GSCARD_PROG = {"milestones": [0, 190, 717, 1552, 2605, 3828, 5190, 6669, 8249, 9919, 11669, 13491, 15380, 17329, 19335, 21393, 23500, 25653, 27850, 30088, 32365, 34679, 37028, 39411, 41826, 44273, 46749, 49254, 51787, 54346, 56931, 59541, 62175, 64833, 67513, 70215, 72939, 75683, 78448, 81232, 84035, 86857, 89698, 92556, 95432, 98325, 101235, 104161, 107103, 110061, 113034, 116022, 119025, 122042, 125074, 128120, 131179, 134252, 137338, 140437, 143549, 146673, 149810, 152959, 156120, 159293, 162477, 165672, 168879, 172097, 175326, 178566, 181816, 185077, 188348, 191629, 194920, 198221, 201532, 204853, 208183, 211523, 214872, 218230, 221597, 224973, 228358, 231752, 235155, 238566, 241986, 245414, 248851, 252296, 255749, 259210, 262679, 266156, 269641, 273141], "class_thresholds": [4, 7, 10, 13, 15, 18, 20, 23, 27, 30, 34, 38, 43, 50, 60, 99]};
+window.GSCARD_HIDDEN = {"weapons": [{"idx": 26, "name": "SAN92", "note": "missile launcher"}, {"idx": 27, "name": "CAC80", "note": "sniper rifle"}, {"idx": 28, "name": "CAC80 II", "note": "second sniper rifle, same name plate"}, {"idx": 29, "name": "SAW25", "note": "heavy machinegun, brother of the SAW24"}, {"idx": 30, "name": "GRENADE", "note": "no name plate in the HUD"}, {"idx": 31, "name": "GGL50", "note": "grenade launcher"}, {"idx": 32, "name": "SMOKE GRENADE"}, {"idx": 33, "name": "CS GRENADE"}, {"idx": 34, "name": "FLASH GRENADE"}, {"idx": 35, "name": "ROAR GRENADE"}, {"idx": 36, "name": "STINGBALL GRENADE", "note": "three at a time"}], "costumes": [{"idx": 1, "name": "BETA", "model": "BETA1P/BETA2P", "note": "squad ally, white band on the helmet"}, {"idx": 2, "name": "GAMMA", "model": "GAMMA1P/GAMMA2P", "note": "squad ally, red band on the helmet"}, {"idx": 16, "name": "FORCE X", "model": "FORCE1X/FORCE2X", "note": "seen as a terrorist, at a distance only"}]};
+window.GSCARD_ATLAS = {"badges": [165, 164, 163, 162, 161, 160, 159, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49], "icons": {"sprite": 338, "gun": [48, 37, 78, 67], "shirt": [48, 77, 78, 107]}};
+
+</script>
+<script>
+"use strict";
+const SBHU = 0x40, MIRROR = 0x140, OFF_COST = 0x78, OFF_WEAP = 0x74;
+// what the game itself puts on a brand new card: two costumes, one weapon,
+// and the 56 progress markers it lays down (groups of 17, 19 and 20 items)
+const VIRGIN_WEAP = 0x02, VIRGIN_COST = 0x11;
+const VIRGIN_MARKS = "11101100111110011" + "0101110000010001111" + "11111010111111000011";
+let ART = {}, UI = {}, ARTSRC = null;                    // filled in only by an import
+const PROG = window.GSCARD_PROG || {milestones:[0], class_thresholds:[]};
+const ITEMS = window.GSCARD_ITEMS || {costumes:[], weapons:[]};
+const MS = PROG.milestones, CT = PROG.class_thresholds, MAXEXP = MS[98];
+const RANKS = ["Private","Private First Class","Sergeant","Master Sergeant","Warrant Officer","Chief Warrant Officer",
+  "Second Lieutenant","First Lieutenant","Captain","Major","Lieutenant Colonel","Colonel","Brigadier General",
+  "Major General","Lieutenant General","General","Marshal"];
+const ABBR = ["PVT","PFC","SGT","MSG","WO","CW","2LT","1LT","CPT","MAJ","LTC","COL","BG","MG","LTG","GEN","MAR"];
+const $ = id => document.getElementById(id);
+const sb = o => SBHU + o;
+const hex = v => "0x" + v.toString(16).padStart(8, "0");
+const stamp = t => t ? new Date(t * 1000).toLocaleString() : "—";
+const levelOf = exp => { let n = 0; for (let i = 1; i <= 98; i++) if (MS[i] <= exp) n++; return n; };   // stored level 0..98
+const classOf = lvl => Math.min(16, CT.filter(t => t <= lvl + 1).length);
+
+let card = null, fileName = "card.bin";
+let openMasks = null, flagNew = true, expEdited = false;   // openMasks = the two masks as the file was opened
+function crc32jam(b, from, len){ let c = 0xFFFFFFFF;
+  for (let i = from; i < from + len; i++){ c ^= b[i]; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1)); }
+  return c >>> 0; }
+const rd32 = o => (card[o] | card[o+1]<<8 | card[o+2]<<16 | card[o+3]<<24) >>> 0;
+const wr32 = (o,v) => { card[o]=v&255; card[o+1]=v>>>8&255; card[o+2]=v>>>16&255; card[o+3]=v>>>24&255; };
+function seal(){ wr32(sb(0xFC), crc32jam(card, SBHU, 0xFC)); card.copyWithin(MIRROR, SBHU, SBHU + 0x100); }
+function say(m, k){ const s = $("status"); s.hidden = false; s.className = k || "";
+  s.innerHTML = (k === "ok" ? '<span class="ic">✓</span>' : k === "err" ? '<span class="ic">✕</span>' : "") + "<span></span>"; s.lastChild.textContent = m; }
+function paintArt(){
+  for (const el of [$("gWeapons"), $("gCostumes")])
+    for (const s of el.children){
+      const src = ART[s.dataset.key + s.dataset.bit] || "";
+      s.querySelector("img").src = src; s.classList.toggle("art", !!src);
+      s.classList.toggle("haslock", !!ART[s.dataset.key + s.dataset.bit + "L"]);
+    }
+  for (const el of [$("xWeapons"), $("xCostumes")])
+    for (const s of el.children){
+      const n = ART["h" + s.dataset.idx + "n"], i = ART["h" + s.dataset.idx + "i"];
+      if (n) s.querySelector(".xn").src = n;
+      if (i) s.querySelector(".xi").src = i;
+      s.classList.toggle("plated", !!n);                  // no plate: the name stays in text
+    }
+  for (const [id, v] of [["picGun", UI.gun], ["picShirt", UI.shirt]]){ $(id).src = v || ""; $(id).hidden = !v; }
+}
+/* ---- the pictures come from the program, not from the page --------------------
+   The C++ side finds the sprite archive inside the player's own copy of the game,
+   decodes it and writes the pictures next to the program; they are then served
+   from here like any other file. The naming is fixed, so the page can build every
+   address itself. */
+const ATLAS = window.GSCARD_ATLAS || { badges: [], icons: {} };
+/* Items with a model in the game but no locker bit and no picture: costume
+   indices the setter accepts (0-16) beyond the 14 the locker lists, and weapon
+   indices up to 36 beyond the 25 it lists. They can only be worn. */
+const HIDDEN = window.GSCARD_HIDDEN || {weapons:[], costumes:[]};
+const hiddenW = i => HIDDEN.weapons.find(h => h.idx === i);
+const hiddenC = i => HIDDEN.costumes.find(h => h.idx === i);
+let artLang = null;
+
+const slug = n => n.toLowerCase().replace(/ /g, "-");
+const two = n => String(n).padStart(2, "0");
+
+async function useArt(lang){
+  if (!lang){ ART = {}; UI = {}; artLang = null; paintArt(); if (card) refresh(); return; }
+  const want = [];
+  for (const [list, key, dir] of [[ITEMS.costumes, "c", "costumes"], [ITEMS.weapons, "w", "weapons"]])
+    for (const it of list){
+      const stem = `${dir}/${two(it.bit)}-${slug(it.name)}`;
+      want.push([key + it.bit, stem + ".png"]);
+      want.push([key + it.bit + "L", stem + "-locked.png"]);
+    }
+  for (let i = 0; i < 17; i++) want.push(["badge" + i, `badges/${two(i)}.png`]);
+  for (const it of HIDDEN.weapons){                       // the HUD's own name plates
+    want.push(["h" + it.idx + "n", `hidden/${two(it.idx)}-name.png`]);
+    want.push(["h" + it.idx + "i", `hidden/${two(it.idx)}-icon.png`]);
+  }
+  want.push(["gun", "icons/gun.png"]); want.push(["shirt", "icons/shirt.png"]);
+  want.push(["plate", "buttons/plate.png"]);
+
+  const art = {}, ui = {};
+  let done = 0;
+  for (const [key, file] of want){
+    const r = await hostImage(lang, file);
+    if (r && r.ok){
+      const url = "data:image/png;base64," + r.data;
+      if (key === "plate"){
+        document.documentElement.style.setProperty("--plate", `url(${url})`);
+        document.documentElement.classList.add("hasplate");
+      }
+      else if (key.startsWith("badge") || key === "gun" || key === "shirt") ui[key] = url;
+      else art[key] = url;
+    }
+    if (++done % 24 === 0) say(`Loading pictures... ${Math.round(done * 100 / want.length)}%`);
+  }
+  ART = art; UI = ui; artLang = lang;
+  paintArt(); if (card) refresh();
+}
+
+async function openGame(){
+  say("Choose your copy of Ghost Squad...");
+  const r = await hostPickGame();
+  if (!r.ok) return say(r.err || "No artwork in that file.", "err");
+  say(`Artwork found in ${r.name} - now pick the edition you want.`, "ok");
+  $("langAsk").textContent = "Which edition of the artwork?";
+  $("langPick").hidden = false;
+}
+
+async function buildArt(lang){
+  say("Writing the pictures...");
+  const r = await hostImport(lang);
+  if (!r.ok) return say(r.err || "Could not write the pictures.", "err");
+  await useArt(lang);
+  say(`Artwork imported - ${lang === "japanese" ? "Japanese" : "World"} edition, kept in assets/${lang}.`, "ok");
+}
+
+function blankCard(){
+  const c = new Uint8Array(2048);
+  c.set([0x95,0x71,0x36,0x40], 0x20); c.set([0x00,0x00,0x03,0xF2], 0x34);
+  const w = (o,v)=>{c[o]=v&255;c[o+1]=v>>>8&255;c[o+2]=v>>>16&255;c[o+3]=v>>>24&255;};
+  w(SBHU+0x00,0x55484253); w(SBHU+0x04,0x3F2); w(SBHU+0x08,0x4754584E); w(SBHU+0x0C,0x100);
+  const now = Math.floor(Date.now()/1000); w(SBHU+0x10,now); w(SBHU+0x14,now);
+  w(SBHU+0x24,100); w(SBHU+OFF_WEAP,VIRGIN_WEAP); w(SBHU+OFF_COST,VIRGIN_COST);
+  for (let i = 0; i < VIRGIN_MARKS.length; i++) c[SBHU+0x80+i] = +VIRGIN_MARKS[i];
+  c[SBHU+0x7C]=1; c[SBHU+0x6D]=0xFF;
+  const keep = card; card = c; seal(); card = keep; return c;
+}
+function load(bytes, name){
+  if (bytes.length !== 2048) return say(`This file is ${bytes.length} bytes; a card is 2048.`, "err");
+  card = bytes; fileName = name;
+  const magic = String.fromCharCode(...card.slice(sb(0), sb(4))), game = String.fromCharCode(...card.slice(sb(8), sb(12)));
+  if (magic !== "SBHU") return say(`No save block found (signature "${magic}"). Not a Ghost Squad card.`, "err");
+  if (game !== "NXTG")  return say(`This card belongs to another game ("${game}").`, "err");
+  const ok0 = rd32(sb(0xFC)) === crc32jam(card, SBHU, 0xFC), ok1 = rd32(MIRROR+0xFC) === crc32jam(card, MIRROR, 0xFC);
+  openMasks = { w: rd32(sb(OFF_WEAP)), c: rd32(sb(OFF_COST)), f: rd32(sb(0xB8)) };
+  expEdited = false;
+  const odd = card[sb(0x5C)] !== levelOf(rd32(sb(0x50))) || card[sb(0x64)] !== classOf(card[sb(0x5C)]);
+  const extra = odd ? " The level or class on this card does not follow its EXP; move the EXP slider to line them up." : "";
+  say(ok0 && ok1 ? `${name} loaded — card data intact.${extra}` : `${name} loaded — the card data was damaged; saving will repair it.${extra}`, ok0 && ok1 ? "ok" : "err");
+  $("drop").hidden = true; $("editor").hidden = false; $("btnSave").disabled = false;
+  build(); refresh();
+}
+function build(){
+  if ($("gWeapons").children.length) return;
+  for (const [el, list, key] of [[$("gWeapons"), ITEMS.weapons, "w"], [$("gCostumes"), ITEMS.costumes, "c"]]){
+    for (const it of list){
+      const d = document.createElement("div"); d.className = "slot"; d.dataset.bit = it.bit; d.title = it.name;
+      d.dataset.key = key; d.innerHTML = `<img alt="${it.name}"><b class="nm">${it.name}</b>`;
+      const off = sb(key === "w" ? OFF_WEAP : OFF_COST);
+      d.onclick = () => {                                   // left click wears it
+        wr32(off, rd32(off) | (1 << it.bit));               // the game never wears a locked item
+        card[sb(key === "w" ? 0x7C : 0x7D)] = it.bit; if (key === "c") card[sb(0x7E)] = it.bit; refresh(); };
+      d.oncontextmenu = e => { e.preventDefault();          // right click locks or unlocks
+        wr32(off, rd32(off) ^ (1 << it.bit)); fixWorn(); refresh(); };
+      el.appendChild(d);
+    }
+  }
+  for (const [el, list, key, at] of [[$("xWeapons"), HIDDEN.weapons, "w", 0x7C], [$("xCostumes"), HIDDEN.costumes, "c", 0x7D]]){
+    for (const it of list){
+      const d = document.createElement("div"); d.className = "slot x"; d.dataset.idx = it.idx; d.dataset.key = key;
+      d.title = `${it.name} - index ${it.idx}${it.model ? ", model " + it.model : ""}${it.note ? " - " + it.note : ""}`;
+      d.innerHTML = `<img class="xi" alt=""><img class="xn" alt="${it.name}"><b class="nm">${it.name}</b><i class="xd">${it.idx}</i>`;
+      d.onclick = () => { card[sb(at)] = it.idx; if (key === "c") card[sb(0x7E)] = it.idx; refresh(); };
+      el.appendChild(d);
+    }
+  }
+  window.MORE = [["Card insertions","in28"],["Card number",()=>hex(rd32(sb(0x20)))],
+    ["Last written",()=>stamp(rd32(sb(0x14)))],
+    ["State",()=>{const f=rd32(sb(0x2C));return (f&1?"registered":"blank")+(f&2?", used up":"");}],
+    ["Total score (kept, never shown by the game)",()=>rd32(sb(0xC4))]];
+  $("raw").innerHTML = window.MORE.map(([l,f],i)=>`<tr><td>${l}</td><td>${f==="in28"?'<input type="number" id="f28" min="0">':`<span id="more${i}"></span>`}</td></tr>`).join("");
+  paintArt();
+}
+function lockArt(s, on){                      // the game has its own picture for a locked item
+  const k = s.dataset.key + s.dataset.bit, src = (on ? ART[k] : ART[k + "L"] || ART[k]) || "";
+  const img = s.querySelector("img"); if (img && img.getAttribute("src") !== src) img.src = src;
+}
+function fixWorn(){                     // the game never wears something that is locked
+  for (const [off, list, at] of [[OFF_COST, ITEMS.costumes, 0x7D], [OFF_WEAP, ITEMS.weapons, 0x7C]]){
+    const m = rd32(sb(off)), worn = card[sb(at)];
+    if (!(m >>> worn & 1) && !(at === 0x7C ? hiddenW(worn) : hiddenC(worn))){
+      const first = (list.find(i => m >>> i.bit & 1) || list[0]).bit;
+      card[sb(at)] = first; if (at === 0x7D) card[sb(0x7E)] = first;
+    }
+  }
+}
+function refresh(){
+  const cm = rd32(sb(OFF_COST)), wm = rd32(sb(OFF_WEAP));
+  const firstOf = (m, list) => { for (const it of list) if (m >>> it.bit & 1) return it.bit; return list[0].bit; };
+  if (!(cm >>> card[sb(0x7D)] & 1) && !hiddenC(card[sb(0x7D)])){ const b = firstOf(cm, ITEMS.costumes); card[sb(0x7D)] = b; card[sb(0x7E)] = b; }
+  if (!(wm >>> card[sb(0x7C)] & 1) && !hiddenW(card[sb(0x7C)])) card[sb(0x7C)] = firstOf(wm, ITEMS.weapons);   // the game never wears a locked item
+  let nc = 0, nw = 0;
+  for (const s of $("gCostumes").children){ const on = cm >>> +s.dataset.bit & 1; s.classList.toggle("off", !on); s.classList.toggle("eq", +s.dataset.bit === card[sb(0x7D)]); lockArt(s, on); nc += on; }
+  for (const s of $("gWeapons").children){ const on = wm >>> +s.dataset.bit & 1; s.classList.toggle("off", !on); s.classList.toggle("eq", +s.dataset.bit === card[sb(0x7C)]); lockArt(s, on); nw += on; }
+  $("cc").textContent = `${nc} of ${ITEMS.costumes.length} costumes unlocked`; $("cw").textContent = `${nw} of ${ITEMS.weapons.length} weapons unlocked`;
+  $("nW").textContent = nw; $("nC").textContent = nc;
+  for (const [el, at] of [[$("xCostumes"), 0x7D], [$("xWeapons"), 0x7C]]){
+    let worn = false;
+    for (const s of el.children){ const on = +s.dataset.idx === card[sb(at)]; s.classList.toggle("eq", on); worn = worn || on; }
+    if (worn && el.hidden){ const b = document.querySelector(`[data-open="${el.id}"]`);
+      if (b) b.onclick(); else el.hidden = false; }      /* something unlisted is worn: show it */
+  }
+  const eqc = hiddenC(card[sb(0x7D)]) || ITEMS.costumes.find(c => c.bit === card[sb(0x7D)]) || ITEMS.costumes[0];
+  const eqw = hiddenW(card[sb(0x7C)]) || ITEMS.weapons.find(w => w.bit === card[sb(0x7C)]);
+  const psrc = eqc.idx !== undefined ? "" : (UI["bust" + eqc.bit] || ART["c" + eqc.bit] || "");
+  $("portrait").src = psrc; $("well").classList.toggle("art", !!psrc);
+  $("portName").innerHTML = `${eqc.name}<br><small style="opacity:.75">${eqw ? eqw.name : "?"}</small>`;
+  $("who").textContent = `${eqc.name} · ${eqw ? eqw.name : "?"}`;   // the column is narrow now
+
+  const exp = rd32(sb(0x50));
+  let lvl = expEdited ? levelOf(exp) : card[sb(0x5C)], cls = expEdited ? classOf(lvl) : card[sb(0x64)];
+  lvl = Math.max(0, Math.min(98, lvl)); cls = Math.max(0, Math.min(16, cls));
+  if (expEdited){ card[sb(0x5C)] = lvl; card[sb(0x64)] = cls; }   // only when the player actually moved it
+  $("f50").textContent = exp.toLocaleString("en-US");
+  if ($("fLevel") !== document.activeElement) $("fLevel").value = lvl + 1;
+  const lo = MS[lvl], hi = MS[lvl + 1];                 // this level starts at lo; the next one at hi
+  const sl = $("expSlide"); sl.min = lo; sl.max = Math.max(lo, hi - 1); sl.value = exp;   // never lands on the next milestone
+  const frac = Math.max(0, Math.min(1, (exp - lo) / Math.max(1, hi - lo)));
+  $("expfill").style.width = (100 * frac) + "%";
+  const txt = lvl >= 98 ? "MAX LEVEL" : `${hi - exp} EXP TO LEVEL UP`;
+  $("expTxt").textContent = txt; $("expTxt2").textContent = txt;
+  $("expTxt2").style.clipPath = `inset(0 ${100 - 100 * frac}% 0 0)`;
+  const rn = $("rankName"), rname = RANKS[cls];          // long ranks must stay on one line
+  rn.textContent = rname;
+  rn.style.fontSize = rname.length > 19 ? "12.5px" : rname.length > 16 ? "14px" : rname.length > 12 ? "16px" : "19px";
+   $("abbr").textContent = ABBR[cls];
+  for (const id of ["rankBadge","badge2"]){ $(id).src = UI["badge" + cls] || ""; $(id).hidden = !UI["badge" + cls]; }
+
+  for (const [id, off] of [["f48",0x48],["f44",0x44],["fCredits2",0x24],["f28",0x28]]){
+    const el = $(id); if (el && el !== document.activeElement) el.value = rd32(sb(off)); }
+  const name = String.fromCharCode(...card.slice(sb(0x30), sb(0x38))).replace(/\0+$/, "");
+  if ($("fName") !== document.activeElement) $("fName").value = name;
+  $("nameCnt").textContent = `${name.length} / 8`;
+  const cfg = rd32(sb(0xCC));
+  $("subState").textContent = (cfg & 4) ? "OFF" : "ON"; $("appState").textContent = (cfg & 2) ? "SIMPLE" : "NORMAL";
+  (window.MORE || []).forEach(([, f], i) => { const c = $("more" + i); if (c) c.textContent = f(); });
+  if (window.maybeZoom) requestAnimationFrame(maybeZoom);   // only if the page really changed height
+}
+document.addEventListener("input", e => {
+  const id = e.target.id; let v = parseInt(e.target.value, 10); if (isNaN(v)) v = 0; v = Math.max(0, v);
+  if (id === "expSlide"){ expEdited = true; wr32(sb(0x50), v); refresh(); }
+  else if (id === "fLevel"){ const L = Math.max(1, Math.min(99, v)); if (String(L) !== e.target.value) e.target.value = L;
+    expEdited = true; wr32(sb(0x50), MS[L - 1]); refresh(); }                                   // typing a level puts EXP at that level's start
+  else if (id === "f48"){ wr32(sb(0x48), v); refresh(); }
+  else if (id === "f44"){ wr32(sb(0x44), v); refresh(); }
+  else if (id === "f28"){ wr32(sb(0x28), v); refresh(); }
+  else if (id === "fCredits2"){ const C = Math.min(999, v); if (String(C) !== e.target.value) e.target.value = C; wr32(sb(0x24), C); refresh(); }
+  else if (id === "fName"){ const s = e.target.value.toUpperCase().replace(/[^\x20-\x7E]/g, "").slice(0, 8);
+    if (s !== e.target.value) e.target.value = s; for (let i = 0; i < 8; i++) card[sb(0x30)+i] = i < s.length ? s.charCodeAt(i) : 0;
+    $("nameCnt").textContent = `${s.length} / 8`; }
+});
+for (const b of document.querySelectorAll("[data-tab]")) b.onclick = () => {
+  for (const x of document.querySelectorAll("[data-tab]")) x.classList.toggle("on", x === b);
+  for (const t of "cwk") $("tab-" + t).hidden = b.dataset.tab !== t;
+  applyZoom(); };                                        /* the weapons tab is one row taller */
+for (const b of document.querySelectorAll("[data-all],[data-none]")) b.onclick = () => {
+  const w = (b.dataset.all || b.dataset.none) === "w", list = w ? ITEMS.weapons : ITEMS.costumes, off = sb(w ? OFF_WEAP : OFF_COST);
+  let m = 0; if (b.dataset.all) for (const it of list) m |= 1 << it.bit; else m = 1 << list[0].bit;   // keep the starting item
+  wr32(off, m >>> 0); refresh(); };
+$("tSub").onclick = () => { wr32(sb(0xCC), rd32(sb(0xCC)) ^ 4); wr32(sb(0xB8), rd32(sb(0xB8)) | 0x400); refresh(); };
+$("tApp").onclick = () => { wr32(sb(0xCC), rd32(sb(0xCC)) ^ 2); wr32(sb(0xB8), rd32(sb(0xB8)) | 0x200); refresh(); };
+for (const b of document.querySelectorAll("[data-open]")) b.onclick = () => {
+  const g = $(b.dataset.open); g.hidden = !g.hidden;
+  b.innerHTML = b.innerHTML.replace(g.hidden ? "\u25be" : "\u25b8", g.hidden ? "\u25b8" : "\u25be");
+  applyZoom(); };                                        /* the window follows the fold */
+$("tNew").onclick = () => { flagNew = !flagNew; $("newState").textContent = flagNew ? "YES" : "NO"; };
+let sizing = false, again = false, winScale = null, picked = false, desk = {w:0, h:0};
+let unit = 1;                  // window units per page pixel, measured on the first pass
+let lastW = -1, lastH2 = -1;   // the size the window was last asked for   // picked: the user chose a size himself
+/* The window follows the page: measure what the page needs at the chosen size,
+   then ask for a window of exactly that. The user stays free to drag it after. */
+/* Refreshing the page is cheap; asking the window manager to resize is not. Every
+   notch of the EXP slider used to do both, and the whole editor felt heavy. So the
+   window is only re-measured when the page really grew or shrank. */
+let lastH = -1;
+function maybeZoom(){
+  const wrap = document.querySelector(".wrap");
+  const h = wrap.scrollHeight;
+  if (Math.abs(h - lastH) < 2) return;
+  lastH = h;
+  applyZoom();
+}
+
+async function applyZoom(){
+  if (sizing){ again = true; return; }                   /* one pass at a time, but never lose the last */
+  sizing = true;
+  try { await sizePass(); }
+  finally { sizing = false; if (again){ again = false; applyZoom(); } }
+}
+
+async function sizePass(){
+  const wrap = document.querySelector(".wrap");
+  /* One unit everywhere: the window manager's. 100% is one page pixel per window
+     unit, which is what the desk itself is measured in, so the page comes out the
+     same size on every machine. Asking the engine's own pixel ratio is what went
+     wrong before: KDE tells GTK "2" while the desk really runs at 1.25, and the
+     page came out half size. */
+  if (winScale === null && window.hostScale){
+    const r = await hostScale();
+    winScale = (r && r.scale) || 1;
+    desk = { w: (r && r.w) || 0, h: (r && r.h) || 0 };
+    /* How many window units one page pixel takes. It is not the same number on
+       every desktop - Wayland counts windows in double units and draws double,
+       which cancels out, while X11 counts real pixels and still draws at the
+       desktop's text scale - so it is measured rather than assumed: the window's
+       own inside, as the window manager counts it, against the page's own width. */
+    if (r && r.cw > 0 && window.innerWidth > 0) unit = r.cw / window.innerWidth;
+  }
+  let pick = parseFloat($("uiScale").value) || 1;
+  /* What the page needs, read from the page as it stands right now - the tab that
+     is open, the folds that are open, the pictures that have arrived - and undone
+     of the zoom it is drawn at. Measuring a hidden or half-built page is what let
+     the window come out one row too short. The width is the design width, fixed,
+     because measuring inside a narrow window makes the content reflow taller and
+     the window walks itself into a corner. */
+  const drawn = parseFloat(wrap.style.zoom) || 1;
+  const needW = 948;                                     /* .wrap is 920 wide plus its 14px sides */
+  const needH = Math.ceil(wrap.getBoundingClientRect().height / drawn) + 16;
+  /* The page opens at 100% and stays there; the only thing that moves it by itself
+     is a desk too small to hold it, and then only downwards. Anything the user
+     picks is remembered and wins from then on. */
+  if (!picked && desk.h && desk.w && pick > 0.5){
+    const opts = [...$("uiScale").options].map(o => parseFloat(o.value))
+                                          .filter(v => v <= pick).sort((a, b) => b - a);
+    const fit = opts.find(v => needH * v * unit <= desk.h && needW * v * unit <= desk.w);
+    const use = fit !== undefined ? fit : opts[opts.length - 1];
+    if (use !== pick){ pick = use; $("uiScale").value = String(pick); }
+  }
+  wrap.style.zoom = pick;
+  if (!isFinite(needH) || needH < 100) return;           /* only refuse nonsense */
+  if (!window.hostResize) return;                        /* in a plain browser: nothing to resize */
+  let reqW = Math.max(Math.round(needW * pick * unit), 420);
+  let reqH = Math.max(Math.round(needH * pick * unit), 220);
+  /* never ask for more window than there is desk: past that the bottom of the
+     page simply falls off the screen, with no way to reach it. */
+  if (desk.w) reqW = Math.min(reqW, desk.w);
+  if (desk.h) reqH = Math.min(reqH, desk.h);
+  if (reqW === lastW && reqH === lastH2) return;          /* the window is already that size */
+  lastW = reqW; lastH2 = reqH;
+  await hostResize(reqW, reqH);
+}
+/* Whatever changes the page's height - a card loaded, a tab, a fold, a picture
+   that arrived - the window has to follow. Watching the page itself is the only
+   way that cannot be forgotten; guessing which action grew it is how the window
+   ended up taller than the screen. */
+if (window.ResizeObserver){
+  let t = 0;
+  new ResizeObserver(() => { clearTimeout(t); t = setTimeout(maybeZoom, 60); })
+    .observe(document.querySelector(".wrap"));
+}
+$("uiScale").onchange = () => { picked = true; applyZoom();
+  if (window.hostSavePrefs) hostSavePrefs($("uiScale").value); };   // remembered for next time
+window.addEventListener("load", applyZoom);
+setTimeout(applyZoom, 60);
+function fromB64(b){ const raw = atob(b), u = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) u[i] = raw.charCodeAt(i); return u; }
+
+$("btnOpen").onclick = async () => {
+  const r = await hostOpenCard();
+  if (!r.ok) return r.err && say(r.err, "err");
+  load(fromB64(r.data), r.name);
+};
+document.addEventListener("contextmenu", e => e.preventDefault());   // this is an application, not a web page
+$("btnArt").onclick = () => openGame();
+
+for (const b of $("langPick").querySelectorAll("[data-lang]")) b.onclick = () => {
+  $("langPick").hidden = true; if (b.dataset.lang) buildArt(b.dataset.lang === "jp" ? "japanese" : "world"); };
+if (window.hostPrefs) hostPrefs().then(p => {           // the size chosen last time
+  if (p && p.scale && [...$("uiScale").options].some(o => o.value === p.scale)){
+    $("uiScale").value = p.scale; picked = true; applyZoom();
+  }
+});
+hostAssets().then(async r => {
+  if (r && r.lang){ await useArt(r.lang); say(`Artwork loaded - ${r.lang} edition. Open a card to start.`, "ok"); }
+  if (window.hostStartCard){                       /* only when asked for, for testing */
+    const c = await hostStartCard();
+    if (c && c.ok){
+      load(fromB64(c.data), c.name);
+      if (c.tab){ const b = document.querySelector(`[data-tab="${c.tab}"]`); if (b) b.onclick(); }
+    }
+  }
+});
+$("btnNew").onclick = () => load(blankCard(), "new-card.bin");
+
+$("btnSave").onclick = async () => {
+  wr32(sb(0x14), Math.floor(Date.now() / 1000));                       // the game stamps this at every write
+  const ref = flagNew && openMasks ? openMasks : { w: rd32(sb(OFF_WEAP)), c: rd32(sb(OFF_COST)), f: rd32(sb(0xB8)) };
+  wr32(sb(0xD0), ref.w); wr32(sb(0xD4), ref.c); wr32(sb(0xD8), ref.f); // what the card looked like on the way in
+  seal();
+  let bin = "";
+  for (let i = 0; i < card.length; i++) bin += String.fromCharCode(card[i]);
+  const r = await hostSaveCard(fileName, btoa(bin));
+  if (!r.ok) return r.err && say(r.err, "err");
+  fileName = r.name || fileName;
+  say(`${fileName} saved - ready to use.`, "ok");
+};
+
+const drop = $("drop");
+drop.onclick = () => $("btnOpen").onclick();
+</script>
+</body>
+</html>
