@@ -1,10 +1,4 @@
-/* Reading the game's own pictures out of a copy of the game the user owns.
- *
- * Nothing is known about the container: every sprite archive carries its own
- * shape (a zero dword, then the distance to its "XPR0" block), so the archives
- * are found by scanning for that. The card archive is the one holding every
- * texture the item tables name and a 30x20 rank badge at each of the seventeen
- * badge slots. Textures are DXT1 or DXT5, stored bottom-up.
+/* Extracts the game's pictures from the player's own game image.
  *
  * Copyright (c) 2026 Reda Cherif-Touil
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -26,7 +20,8 @@ struct GsArchive {
     bool ok() const { return !tex.empty(); }
 };
 
-/* Scans the file and keeps the card archive. progress is called with 0..1. */
+/* Finds the card archive: by name in a game image, else by scanning for its XPR0 block.
+ * progress gets 0..1. */
 bool gs_find_archive(const char *path, GsArchive *out, std::string *err,
                      void (*progress)(float, void *), void *user);
 

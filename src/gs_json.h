@@ -1,8 +1,4 @@
-/* Reading the arguments a page hands to the program.
- *
- * They arrive as a JSON array. Values may be quoted strings or bare numbers -
- * a parser that only knew about quoted strings silently returned nothing for
- * hostResize(976, 1040), which is how a window refused to resize for an hour.
+/* Reads one argument of the JSON array the page sends: a quoted string or a bare number.
  *
  * Copyright (c) 2026 Reda Cherif-Touil
  * SPDX-License-Identifier: GPL-3.0-or-later

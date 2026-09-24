@@ -20,9 +20,9 @@ int main()
     for (auto &c : cases) {
         const std::string got = gs_json_arg(c.req, c.index);
         const bool ok = got == c.want;
-        printf("  %-32s [%d] -> %-24s %s\n", c.req, c.index, ("\"" + got + "\"").c_str(), ok ? "OK" : "ECHEC");
+        printf("  %-32s [%d] -> %-24s %s\n", c.req, c.index, ("\"" + got + "\"").c_str(), ok ? "OK" : "FAILED");
         bad += !ok;
     }
-    printf("%s\n", bad ? "DES CAS ECHOUENT" : "l'analyseur lit nombres et chaines");
+    printf("%s\n", bad ? "SOME CASES FAILED" : "the parser reads numbers and strings");
     return bad ? 1 : 0;
 }

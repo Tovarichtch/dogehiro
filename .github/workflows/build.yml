@@ -2,6 +2,7 @@ name: build
 
 on:
   push:
+    branches: [main]     # other branches run through their pull request: one run per change
   pull_request:
   workflow_dispatch:
 
@@ -32,13 +33,20 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # macOS is the one we cannot build ourselves - no Mac here - so this job
-      # keeps its bundle for us to pick up. Two days is enough to fetch it and
-      # costs almost nothing in storage.
-      - name: Keep the macOS bundle
-        if: matrix.name == 'macos'
+      # tar and ditto keep the program runnable; a plain upload drops that permission
+      - name: Pack
+        shell: bash
+        run: |
+          mkdir out
+          case "${{ matrix.name }}" in
+            linux)   tar -czf out/dogehiro-linux.tar.gz -C build dogehiro ;;
+            macos)   ditto -c -k --keepParent build/dogehiro.app out/dogehiro-macos.zip ;;
+            windows) cp build/Release/dogehiro.exe out/ ;;
+          esac
+
+      - name: Keep the program
         uses: actions/upload-artifact@v4
         with:
-          name: dogehiro-macos
-          path: build/dogehiro.app
+          name: dogehiro-${{ matrix.name }}
+          path: out
           retention-days: 2

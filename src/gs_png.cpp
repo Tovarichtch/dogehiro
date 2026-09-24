@@ -1,5 +1,4 @@
-/* A PNG writer in a hundred lines: the image goes out as one uncompressed
- * deflate block, which needs no compression library at all.
+/* Minimal PNG writer: stored (uncompressed) deflate blocks, no library needed.
  *
  * Copyright (c) 2026 Reda Cherif-Touil
  * SPDX-License-Identifier: GPL-3.0-or-later
