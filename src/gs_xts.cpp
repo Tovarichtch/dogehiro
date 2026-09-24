@@ -15,15 +15,34 @@
 #define gs_mkdir(p) mkdir(p, 0755)
 #endif
 
+/* 64-bit seeks: a game image can pass 2 GB. */
+static bool seek64(FILE *f, long long pos)
+{
+#ifdef _WIN32
+    return _fseeki64(f, pos, SEEK_SET) == 0;
+#else
+    return fseeko(f, (off_t)pos, SEEK_SET) == 0;
+#endif
+}
+
+static long long size64(FILE *f)
+{
+#ifdef _WIN32
+    _fseeki64(f, 0, SEEK_END); const long long n = _ftelli64(f);
+#else
+    fseeko(f, 0, SEEK_END); const long long n = (long long)ftello(f);
+#endif
+    seek64(f, 0);
+    return n;
+}
+
 static uint32_t rd32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }
 static int16_t  rds16(const uint8_t *p) { return (int16_t)(p[0] | (p[1] << 8)); }
 
-/* The texture index written in a sprite record belongs to the NEXT record, so a
- * sprite sits in the texture the sprite before it declared. Without this, eleven
- * sprites — four rank badges among them — come out of the wrong texture. */
+/* A sprite record's texture index belongs to the next record. */
 static void read_sprites(const uint8_t *p, size_t n, std::vector<GsSprite> &out)
 {
     if (n < 20) return;
@@ -78,13 +97,8 @@ static bool badges_look_right(const std::vector<GsSprite> &spr)
     return true;
 }
 
-/* ---------------------------------------------------------------- the game's
- * own filesystem. A Chihiro game image is an FATX partition: "FATX" at byte 0,
- * clusters of a few sectors, a FAT at 0x1000 and the data right after it, with
- * the root directory in cluster 1. A directory entry is 64 bytes: name length,
- * attributes, the name on 42, the first cluster at 0x2C, the size at 0x30.
- * Reading it lets us open /media/spr_card.xts by name instead of hunting for it
- * through half a gigabyte. */
+/* The game image's FATX filesystem, to open /media/spr_card.xts by name. FAT at
+ * 0x1000; a 64-byte entry holds the name length, the name, cluster 0x2C, size 0x30. */
 
 struct Fatx {
     FILE *f = NULL;
@@ -94,7 +108,7 @@ struct Fatx {
     bool open(FILE *file, long long size)
     {
         uint8_t h[16];
-        if (fseek(file, 0, SEEK_SET) != 0 || fread(h, 1, sizeof h, file) != sizeof h) return false;
+        if (!seek64(file, 0) || fread(h, 1, sizeof h, file) != sizeof h) return false;
         if (memcmp(h, "FATX", 4) != 0) return false;
         f = file;
         cluster = rd32(h + 8) * 512;
@@ -103,15 +117,12 @@ struct Fatx {
         width = nclust < 0xFFF0 ? 2 : 4;
         uint32_t fatsize = ((nclust * width) + 4095) / 4096 * 4096;
         fat.resize(fatsize);
-        fseek(f, 0x1000, SEEK_SET);
-        if (fread(fat.data(), 1, fat.size(), f) != fat.size()) return false;
-        /* The FAT area is padded, and by how much varies; the root directory is
-         * the first thing after it that reads like a directory entry. */
+        if (!seek64(f, 0x1000) || fread(fat.data(), 1, fat.size(), f) != fat.size()) return false;
+        /* the FAT's padding varies: the root is the first block that looks like one */
         for (uint32_t pad = 0; pad <= 0x10000; pad += 0x1000) {
             data0 = 0x1000 + fatsize + pad;
             uint8_t e[64];
-            fseek(f, (long)data0, SEEK_SET);
-            if (fread(e, 1, sizeof e, f) != sizeof e) return false;
+            if (!seek64(f, data0) || fread(e, 1, sizeof e, f) != sizeof e) return false;
             if (e[0] >= 1 && e[0] <= 42 && (e[1] & ~0x37) == 0) return true;
         }
         return false;
@@ -129,7 +140,7 @@ struct Fatx {
         for (uint32_t c = first, guard = 0; c && c < end && guard < 200000; c = next(c), guard++) {
             size_t was = out.size();
             out.resize(was + cluster);
-            if (fseek(f, (long)(data0 + (long long)(c - 1) * cluster), SEEK_SET) != 0 ||
+            if (!seek64(f, data0 + (long long)(c - 1) * cluster) ||
                 fread(&out[was], 1, cluster, f) != cluster) { out.clear(); return false; }
             if (size && out.size() >= size) break;
             if (!size && out.size() > (16u << 20)) break;
@@ -137,7 +148,7 @@ struct Fatx {
         if (size) out.resize(size);
         return !out.empty();
     }
-    /* Looks for one file by name, anywhere in the tree, and reads it. */
+    /* Finds a file by name anywhere in the tree and reads it. */
     bool find(const char *name, std::vector<uint8_t> &out, uint32_t dir = 1, int depth = 0)
     {
         if (depth > 4) return false;
@@ -164,11 +175,7 @@ static bool archive_by_name(const char *path, const char *name, GsArchive *out)
 {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
-#ifdef _WIN32
-    _fseeki64(f, 0, SEEK_END); long long size = _ftelli64(f);
-#else
-    fseeko(f, 0, SEEK_END); long long size = ftello(f);
-#endif
+    const long long size = size64(f);
     Fatx fx;
     bool ok = fx.open(f, size) && fx.find(name, out->data);
     fclose(f);
@@ -188,30 +195,20 @@ bool gs_find_hud_archive(const char *path, GsArchive *out)
 bool gs_find_archive(const char *path, GsArchive *out, std::string *err,
                      void (*progress)(float, void *), void *user)
 {
-    /* The quick way first: a game image is a filesystem, and the archive has a
-     * name. Anything else - a loose .xts, a differently packed image - still
-     * goes through the scan below. */
+    /* By name first; anything else (a loose .xts, another packing) is scanned below. */
     if (archive_by_name(path, "spr_card.xts", out)) {
         if (progress) progress(1.0f, user);
         return true;
     }
     FILE *f = fopen(path, "rb");
     if (!f) { *err = "Could not open that file."; return false; }
-#ifdef _WIN32
-    _fseeki64(f, 0, SEEK_END); long long size = _ftelli64(f); _fseeki64(f, 0, SEEK_SET);
-#else
-    fseeko(f, 0, SEEK_END); long long size = ftello(f); fseeko(f, 0, SEEK_SET);
-#endif
+    const long long size = size64(f);
     const size_t CHUNK = 8u << 20, BACK = 256u << 10;
     std::vector<uint8_t> buf(CHUNK), head;
     bool found = false;
     for (long long pos = 0; pos < size && !found; pos += (long long)CHUNK - 3) {
         if (progress) progress((float)((double)pos / (double)size), user);
-#ifdef _WIN32
-        _fseeki64(f, pos, SEEK_SET);
-#else
-        fseeko(f, pos, SEEK_SET);
-#endif
+        seek64(f, pos);
         size_t got = fread(buf.data(), 1, CHUNK, f);
         for (size_t i = 0; i + 3 < got && !found; i++) {
             const uint8_t *hit = (const uint8_t *)memchr(buf.data() + i, 'X', got - i - 3);
@@ -221,12 +218,7 @@ bool gs_find_archive(const char *path, GsArchive *out, std::string *err,
             long long x = pos + (long long)i;
             long long back = x - (long long)BACK; if (back < 0) back = 0;
             head.resize((size_t)(x - back) + 8);
-#ifdef _WIN32
-            _fseeki64(f, back, SEEK_SET);
-#else
-            fseeko(f, back, SEEK_SET);
-#endif
-            if (fread(head.data(), 1, head.size(), f) != head.size()) continue;
+            if (!seek64(f, back) || fread(head.data(), 1, head.size(), f) != head.size()) continue;
             for (long long p = (long long)head.size() - 8 - 16; p >= 0; p -= 4) {
                 if (rd32(&head[(size_t)p]) != 0) continue;
                 if ((long long)rd32(&head[(size_t)p + 4]) != x - (back + p)) continue;
@@ -237,12 +229,8 @@ bool gs_find_archive(const char *path, GsArchive *out, std::string *err,
                     if (badges_look_right(spr)) {
                         long long start = back + p, total = rd32(&head[head.size() - 4]);
                         out->data.resize((size_t)(x + total - start));
-#ifdef _WIN32
-                        _fseeki64(f, start, SEEK_SET);
-#else
-                        fseeko(f, start, SEEK_SET);
-#endif
-                        if (fread(out->data.data(), 1, out->data.size(), f) == out->data.size())
+                        if (seek64(f, start) &&
+                            fread(out->data.data(), 1, out->data.size(), f) == out->data.size())
                             found = true;
                     }
                 }
@@ -344,8 +332,7 @@ static std::string slug(const char *name)
     return s;
 }
 
-/* Creates every level of the path, not only the last one: the assets folder
- * itself may not exist yet. */
+/* mkdir -p */
 static void make_dirs(const std::string &p)
 {
     std::string acc;
@@ -370,9 +357,7 @@ bool gs_cut_sprite(const GsArchive &a, int sprite, std::vector<uint8_t> &rgba, i
     return true;
 }
 
-/* The name plate and the icon the game paints in its own HUD, for the items the
- * locker has no card for. Whatever is missing is simply not written; the
- * interface falls back to the name in text. */
+/* HUD name plates and icons for the items the locker never shows; missing ones are skipped. */
 bool gs_export_hidden(const GsArchive &hud, const char *dir, std::string *err)
 {
     if (!hud.ok()) { *err = "No HUD artwork in that file."; return false; }
@@ -424,27 +409,17 @@ bool gs_export_assets(const GsArchive &a, const char *dir, bool japanese, std::s
         }
     }
     for (int cls = 0; cls < 17; cls++) {
-        const GsSprite &s = a.spr[GS_BADGE_SPRITE[cls]];
-        if (!gs_decode_texture(a, s.tex, px, &w, &h)) return false;
-        int b[4] = { s.rect[0], s.rect[1], s.rect[2], s.rect[3] };
-        std::vector<uint8_t> c = cut(px, w, h, b);
-        char path[256]; snprintf(path, sizeof path, "%s/badges/%02d.png", root.c_str(), cls);
-        gs_write_png(path, c.data(), b[2] - b[0], b[3] - b[1]);
-    }
-    {   /* the menu plates, whole, for the interface to stretch as it likes */
-        gs_mkdir((root + "/buttons").c_str());
-        const int want[1] = { GS_PLATE_SPRITE };
-        const char *names[1] = { "plate" };
-        for (int i = 0; i < 1; i++) {
-            if (want[i] >= (int)a.spr.size()) continue;
-            const GsSprite &q = a.spr[want[i]];
-            if (!gs_decode_texture(a, q.tex, px, &w, &h)) continue;
-            int bx[4] = { q.rect[0], q.rect[1], q.rect[2], q.rect[3] };
-            std::vector<uint8_t> c = cut(px, w, h, bx);
-            char path[256]; snprintf(path, sizeof path, "%s/buttons/%s.png", root.c_str(), names[i]);
-            gs_write_png(path, c.data(), bx[2] - bx[0], bx[3] - bx[1]);
+        if (!gs_cut_sprite(a, GS_BADGE_SPRITE[cls], px, &w, &h)) {
+            *err = "The rank badges could not be read.";
+            return false;
         }
+        char path[256]; snprintf(path, sizeof path, "%s/badges/%02d.png", root.c_str(), cls);
+        gs_write_png(path, px.data(), w, h);
     }
+    /* the button plate, whole */
+    make_dirs(root + "/buttons");
+    if (gs_cut_sprite(a, GS_PLATE_SPRITE, px, &w, &h))
+        gs_write_png((root + "/buttons/plate.png").c_str(), px.data(), w, h);
 
     const GsSprite &panel = a.spr[GS_ICON_SPRITE];
     if (gs_decode_texture(a, panel.tex, px, &w, &h)) {

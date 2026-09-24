@@ -1,8 +1,4 @@
-/* Native "open" and "save" dialogs on the three systems, without a library.
- *
- * Windows has them in the OS. macOS is asked through osascript, Linux through
- * zenity or kdialog, whichever is installed. When none is there the caller
- * falls back to dropping the file on the window, which always works.
+/* Open and save dialogs: Windows' own, osascript on macOS, zenity or kdialog on Linux.
  *
  * Copyright (c) 2026 Reda Cherif-Touil
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -86,9 +82,7 @@ bool gs_dialog_open(const char *title, const char *, std::string &out)
 bool gs_dialog_save(const char *title, const char *suggested, std::string &out)
 {
 #ifdef __APPLE__
-    /* The suggestion is often the full path of the card already open, but
-     * "default name" takes a name only: given a path, it becomes the file's name.
-     * The folder goes to "default location" instead. */
+    /* "default name" takes a name only; the folder goes to "default location" */
     std::string name = suggested ? suggested : "card.bin", where;
     const size_t slash = name.rfind('/');
     if (slash != std::string::npos) {
